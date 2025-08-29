@@ -1,232 +1,120 @@
-% Plotting of thermal data retrieved from downscaling models. 99th percentile value is retreived in this code, however, residual sum of squares calculations
-% are done using python instead to make use of the distfit package. This uses the backend of stats packages to test the RSS of every common distribution, 
-% it then filters based on the optimum RSS fit of a distribution. With regards to the project the lognormal distribution was found to be the best fit and
-% therefore that is why it was used in this research.
+% Load Normal Data (2015–2022) 
+LandsatTable = readtable("D:/Dissertation-2542000/RP3/Thermal/Notebooks/stats_normal_2015_merged.csv");
+%LandsatTable = readtable("D:/Dissertation-2542000/RP3/Thermal/Notebooks/Fordo_stats_normal_2015_merged.csv");
+LandsatTable.LandsatAcquisitionDate = datetime(LandsatTable.LandsatAcquisitionDate, 'InputFormat', 'dd/MM/yyyy');
+LandsatTable = sortrows(LandsatTable, 'LandsatAcquisitionDate');
 
-
-% Code to produce temperature time series figures
-% Data obtained through thermal imaging scripts presented in other sections
-% of the report and/or codebase
-
-LandsatTable = readtable("D:/Dissertation-2542000/RP3/stats8_normal_2015.xlsx")
-LandsatTable.Properties.VariableNames
-disp("BEFOREE:")
-LandsatTable.MaxTemp(1:10)
-
-
-% Convert 'LandsatAcquisitionDate' from string to datetime format
-LandsatTable.('Landsat8AcquisitionDate') = datetime(LandsatTable.('Landsat8AcquisitionDate'), 'InputFormat', 'dd/MM/yyyy');
-LandsatTable = sortrows(LandsatTable, 'Landsat8AcquisitionDate');
-
-% Get column values for both maximum and mean temperatures
-x1 = LandsatTable.('Landsat8AcquisitionDate');
+x1 = LandsatTable.LandsatAcquisitionDate;
 y1 = LandsatTable.MaxTemp;
-
-% disp("Preview y1 bwginning:"), disp(raw_y1(1:5));
-% whos raw_y1
-
-% Step 1: Attempt conversion
-% y1 = cellfun(@str2double, raw_y1);
-disp("Preview y1 :"), disp(y1(1:5));
-% Step 2: Find corrupted (non-convertible) entries
-% bad_idx = isnan(y1) & ~cellfun(@(x) any(isnan(str2double(x))), raw_y1);
-
-% Step 3: Display if any issues found
-% if any(bad_idx)
-%     disp('⚠️ Warning: Some entries could not be converted:');
-%     disp(y1(bad_idx));
-% else
-%     disp('✅ All entries converted successfully');
-% end
-
-
-
-x1mean = LandsatTable.('Landsat8AcquisitionDate');
 y1mean = LandsatTable.MeanTemp;
-whos y1_mean
 
-disp("Preview y1mean:"), disp(y1mean(1:5));
-% y1mean = cellfun(@str2double, raw_y1mean);
-% disp("Preview y1mean after converting:"), disp(y1mean(1:5));
+% Load Downscaled GEE Data (2023–2025) 
+DownscaleTable = readtable("D:/Dissertation-2542000/RP3/Thermal/Notebooks/stats_downscale_2023_merged.csv");
+%DownscaleTable = readtable("D:/Dissertation-2542000/RP3/Thermal/Notebooks/Fordo_stats_downscale_2023_merged.csv");
+DownscaleTable.Sentinel2AcquisitionDate = datetime(DownscaleTable.Sentinel2AcquisitionDate, 'InputFormat', 'dd/MM/yyyy');
+DownscaleTable = sortrows(DownscaleTable, 'Sentinel2AcquisitionDate');
 
-% bad_idx_mean = isnan(y1mean) & ~cellfun(@(x) any(isnan(str2double(x))), raw_y1mean);
+x2 = DownscaleTable.Sentinel2AcquisitionDate;
+y2 = DownscaleTable.MaxTemp;
 
-% % Step 3: Display if any issues found
-% if any(bad_idx_mean)
-%     disp('⚠️ Warning: Some entries could not be converted:');
-%     disp(y1(bad_idx_mean));
-% else
-%     disp('✅ All entries converted successfully');
-% end
+%  Load Constellr Data 
+Constellr = readtable("D:/Dissertation-2542000/RP3/Thermal/Notebooks/zaporizhzhia_LST_summary.csv");
+%Constellr = readtable("D:/Dissertation-2542000/RP3/Thermal/Notebooks/fordo_LST_summary.csv");
+Constellr.Date = datetime(Constellr.("DateFolder"), 'InputFormat', 'dd-MM-yyyy');
+Constellr.MaxTemp = Constellr.("MaxTemp");
+Constellr.MeanTemp = Constellr.("MeanTemp");
+Constellr.DeltaT = Constellr.MaxTemp - Constellr.MeanTemp;
 
+disp(class(y1))       % Displays the class of y1
+disp(class(y1mean))   % Displays the class of y1mean
 
-length(x1)
-length(y1)
+% Interpolation for Seasonality 
 
-whos x1
-whos y1
+if iscell(y1)
+    fprintf("y1 is a cell array. Converting to double...\n");
+    y1 = cellfun(@str2double, y1);
+else
+    fprintf("y1 is already numeric: %s\n", class(y1));
+end
 
+if iscell(y1mean)
+    fprintf("y1 is a cell array. Converting to double...\n");
+    y1mean = cellfun(@str2double, y1mean);
+else
+    fprintf("y1 is already numeric: %s\n", class(y1));
+end
 
+y1a = y1;
+x1a = x1;
 
-% % Smoothing the plot to show seasonality
-% x1a = [x1(1:36)' datetime('10/01/2018', 'InputFormat', 'dd/MM/yyyy') x1(37:107)'];
-% y1a = [y1(1:36)' 20 y1(37:107)'];
+[datenums_unique, idx] = unique(datenum(x1a));
+x1a = x1a(idx);
+y1a = y1a(idx);
+datenums = datenums_unique;
+xx = linspace(datenums(1), datenums(end), 200);
+vq2 = interp1(datenums, y1a', xx, 'linear');
+t_interp = datetime(xx, 'ConvertFrom', 'datenum');
 
-% x1a = [x1a(1:43) datetime('10/01/2019', 'InputFormat', 'dd/MM/yyyy') x1a(44:107)];
-% y1a = [y1a(1:43) 20 y1a(44:107)];
+disp(class(y1))       % Displays the class of y1
+disp(class(y1mean))   % Displays the class of y1mean
 
-% disp(x1a)
-% disp(y1a)
-
-% if length(x1a) ~= length(y1a)
-%     error('x1a and y1a must have the same length');
-% end
-
-% Plotting
-% plot(x1a', y1a', 'o-');
-% hold on
-
-% plot(x1', y1', 'o-');
-% hold on
-
-% Loading in downscaled data
-DownscaleTable = readtable("D:/Dissertation-2542000/RP3/stats8_downscale.csv");
-% Convert 'Landsat 8 acquisition date' from string to datetime format
-DownscaleTable.Properties.VariableNames
-DownscaleTable.Sentinel2AcquisitionDate = datetime(DownscaleTable.Sentinel2AcquisitionDate, 'InputFormat', 'yyyy/MM/dd');
-
-% Sort the table by 'LandsatAcquisitionDate' column in ascending order
-DownscaleTable = sortrows(DownscaleTable, 'Landsat8AcquisitionDate', 'ascend');
-
-% Get the acquisition times of the images so that it can be converted to
-% time series
-x2 = DownscaleTable.Sentinel2AcquisitionDate
-y2 = DownscaleTable.MaxTemp
-%plot(DownscaleTable.('Landsat 8 acquisition date'), DownscaleTable.DownscaleMeanTemp, 'xk');
-
-% Interpolating for the seasonality plot. Linear used to show simplistic
-% trend, later sine waves are used to demonstrate dynamics of temperature
-x1a=x1;
-y1a=y1;
-
-
-datenums = datenum(x1a)
-xx=linspace(datenums(1),datenums(end),200);
-vq2 = interp1(datenums,y1a',xx,'linear');
-t = datetime(xx,'ConvertFrom','datenum')
-
-% Implementation of stl with loess which was not implemented in terms of
-% thermal
-
-
-figure
-[LT,ST,R] = trenddecomp(vq2,"stl",30);
-
-
-figure
-plot(x1a,y1a,'or', 'MarkerSize',3,'DisplayName','Landsat 8 (Max. Temp - Mean Temp)')
-hold on
-plot(x2,y2,'ok', 'MarkerSize',3,'DisplayName','Downscaled (Max. Temp - Mean Temp)')
-hold on
-ylim([5 75])
-
-whos x1mean
-whos y1mean
-
-
-plot(x1mean, y1 - y1mean, 'or')
-plot(x2, y2, 'ok')
-
-
-% Define the time axis (in years)
+%  Seasonal Sine Wave 
 t = 0:0.01:3000;
+A = 20; f = 1/365;
+y_season = A * cos(2 * pi * f * t) + 36;
 
-% Define the amplitude and frequency of the sine wave
-A = 20;
-f = 1/365;
+% Plot Max Temperature Trend 
+figure;
+plot(x1a, y1a, 'ok', 'MarkerSize', 3, 'DisplayName', 'Landsat 8 Max Temp'); hold on;
+plot(x2, y2, 'or', 'MarkerSize', 3, 'DisplayName', 'Downscaled Max Temp');
+plot(Constellr.Date, Constellr.MaxTemp, 'ob', 'MarkerFaceColor', 'b', 'MarkerSize', 4, 'DisplayName', 'Constellr Max Temp');
+plot(t_interp, vq2, 'k', 'DisplayName', 'Interpolated Landsat 8');
+plot(t, y_season, '--k', 'DisplayName', 'Seasonality');
 
-% Calculate the values of the sine wave
-y = A*cos(2*pi*f*t) + 36;
+ylim([5 75]);
+legend('Location', 'northwest');
+title('Maximum Recorded Temperature (T \circC)');
+ylabel('T \circC');
+xlabel('Year');
+grid on;
 
-% Plot the sine wave
-plot(t, y,'--k','DisplayName', 'Seasonality');
-legend
-title('Maximum Recorded Temperature (ΔT °C)')
-ylabel('T °C')
-xlabel('Year')
+%  Plot Max - Mean Temperature Differences (ΔT)
+figure;
+vals = y1 - y1mean;
+raw_y2 = DownscaleTable.MaxTemp - DownscaleTable.MeanTemp;
+Constellr_DeltaT = Constellr.DeltaT;
 
-subplot(2,5,[4 5])
-plot(t, vq2, 'k')
-hold on
-plot(x1a,y1a,'or', 'MarkerSize',3)
-%plot(t, ST + 25, 'r')
-plot(x2,y2,'ok', 'MarkerSize',3)
-xlim([t(end)-500, t(end)])
-ylim([5 75])
-
-% Figure for plotting the deviations in the maximum recorded downscaled
-% temperature and comparing that to the max-mean of the landsat temperature
-% over the entire period of suitable imagery.
-% Mean and standard deviations also plotted as found from percentile
-% functions below and other code from the codebase which computed the
-% residual sum of squares of all suitable distributions.
-figure
-x1mean = LandsatTable.('Landsat8AcquisitionDate');
-y1mean = LandsatTable.MeanTemp;
-x2 = DownscaleTable.Landsat8AcquisitionDate
-raw_y2 = DownscaleTable.MaxTemp - DownscaleTable.MeanTemp
-
-whos raw_y2
-% Check sizes
-disp("Size y1:"), disp(size(y1));
-disp("Size y1mean:"), disp(size(y1mean));
-
-% Check for NaNs
-sum(isnan(y1))    % should be 0
-sum(isnan(y1mean)) % should be 0
-
-% Check value preview
-disp("Preview y1:"), disp(y1(1:5));
-disp("Preview y1mean:"), disp(y1mean(1:5));
+plot(x1, vals, 'ok', 'MarkerSize', 3, 'DisplayName', 'Max - Mean: Landsat 8'); hold on;
+plot(x2, raw_y2, 'or', 'MarkerFaceColor','r', 'MarkerSize', 3, 'DisplayName', 'Max - Mean: Downscaled');
+% plot(Constellr.Date, Constellr_DeltaT, 'x', 'Color', [0.2 0.2 0.2], 'MarkerSize', 5, 'DisplayName', 'Max - Mean: Constellr');
+plot(Constellr.Date, Constellr.DeltaT, 'ob', 'MarkerFaceColor', 'b', 'MarkerSize', 3, 'DisplayName', 'Max - Mean: Constellr');
 
 
-% y2 = cellfun(@str2double, raw_y2);
-hold on
-plot(x1mean,y1 - y1mean,'or', 'MarkerSize',3,'DisplayName','Max. - Mean : Landsat 8 ')
-plot(x2, raw_y2,'ok', 'MarkerSize',3,'DisplayName','Max. - Mean : Downscale')
-vals = y1-y1mean;
-meanvals = sum(vals)/108
-stdev = std(vals)
-yline(9.86,'--')   
-yline(15.31,'--')
-yline(17.8657,'--')
-ylim([0 28])
-title('Difference in Maximum and Minimum Recorded Temperature Difference (ΔT °C)')
-ylabel('ΔT °C')
-xlabel('Year')
-box on
-legend
+% Lognormal distribution fit (2015–2022 baseline) 
+meanvals = mean(vals);
+stdev = std(vals);
+pd = fitdist(vals, 'Lognormal');
+perc = icdf(pd, 0.99);
+disp(['99th Percentile Threshold (ΔT): ', num2str(perc)])
+fprintf('99th Percentile (ΔT): %.4f°C\n', perc)
 
+% Annotate Thresholds 
+yline(meanvals + 2 * stdev, '--k', '2\sigma Threshold');
+yline(perc, '--r', '99th Percentile');
 
-% Array handling to transfer the date to a number range since the first
-% date acquisition for plotting purposes
-y1a = y1a(1,1:107)
+max_val = max([vals(:); raw_y2(:); Constellr_DeltaT(:); perc]);
+ylim([0, ceil(max_val) + 2]);
 
-datenums = datenum(x1a);
+title('Difference in Max and Mean Temperature (\DeltaT \circC)');
+ylabel('\DeltaT \circC');
+xlabel('Year');
+legend('Location', 'northwest');
+box on;
+grid on;
 
-% Calculate the number of days since the first measurement
-days = datenums - datenums(1);
-
-days = days(1,1:107)
-filename = 'downscaletabledata.xlsx';
-% writetable(DownscaleTable,filename,'Sheet',1)
-
+% Save processed data (optional) 
 LandsatTable.diff_from_mean = vals;
-filename = 'landsattabledata.xlsx';
-% writetable(LandsatTable,filename,'Sheet',1)
-
-% Lognormal distribution fitted to observed data values
-% 99th percentile taken which is done via the inverse cumulative
-% distribution function.
-pd = fitdist(vals,'Lognormal')
-perc = icdf(pd,0.99)
+writetable(LandsatTable, 'landsattabledata_updated.xlsx');
+DownscaleTable.diff_from_mean = raw_y2;
+writetable(DownscaleTable, 'downscaletabledata_updated.xlsx');
+writetable(Constellr, 'constellrtabledata_updated.xlsx');
